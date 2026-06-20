@@ -13,13 +13,15 @@ def load_inventory():
     with open(CSV_FILE, mode='r', newline='', encoding='utf-8') as f:
         reader = csv.DictReader(f)
         for row in reader:
-            entries.append({
-                "sl_no": row.get("Sl No", ""),
-                "date": row.get("Date", ""),
-                "item": row.get("Item Description", ""),
-                "qty": row.get("Quantity", ""),
-                "issued_to": row.get("Issued To", "")
-            })
+            # വരിയിൽ ഡാറ്റ ഉണ്ടെന്ന് ഉറപ്പുവരുത്തുന്നു
+            if row.get("Sl No") and not row.get("Sl No").startswith('...'):
+                entries.append({
+                    "sl_no": row.get("Sl No", "").strip(),
+                    "date": row.get("Date", "").strip(),
+                    "item": row.get("Item Description", "").strip(),
+                    "qty": row.get("Quantity", "").strip(),
+                    "issued_to": row.get("Issued To", "").strip()
+                })
     return entries
 
 def save_entry(sl_no, date, item, qty, issued_to):
@@ -67,7 +69,7 @@ HTML_TEMPLATE = """
             </h2>
             <form action="/add" method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-4">
                 <input type="text" name="date" placeholder="Date (DD/MM/YYYY)" required class="border p-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <input type="text" name="item" placeholder="Item Description" required class="border p-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 md:col-span-1">
+                <input type="text" name="item" placeholder="Item Description" required class="border p-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <input type="text" name="qty" placeholder="Quantity (e.g. 1 Box)" required class="border p-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <input type="text" name="issued_to" placeholder="Issued To (Name/Dept)" required class="border p-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
                 <button type="submit" class="md:col-span-4 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition text-sm shadow-sm">Save Transaction</button>
@@ -75,7 +77,7 @@ HTML_TEMPLATE = """
         </div>
 
         <div class="mb-4">
-            <input type="text" id="searchInput" onkeyup="filterTable()" placeholder="🔍 Type to search item description or staff name..." class="w-full border p-3 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm">
+            <input type="text" id="searchInput" placeholder="🔍 Type to search item description or staff name..." class="w-full border p-3 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm">
         </div>
 
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
@@ -107,27 +109,19 @@ HTML_TEMPLATE = """
     </div>
 
     <script>
-    def filterTable() {
-        var input = document.getElementById("searchInput");
-        var filter = input.value.toUpperCase();
-        var table = document.getElementById("ledgerTable");
-        var tr = table.getElementsByTagName("tr");
-
-        for (var i = 1; i < tr.length; i++) {
-            tr[i].style.display = "none";
-            var td = tr[i].getElementsByTagName("td");
-            for (var j = 0; j < td.length; j++) {
-                if (td[j]) {
-                    var txtValue = td[j].textContent || td[j].innerText;
-                    if (txtValue.toUpperCase().indexOf(filter) > -1) {
-                        tr[i].style.display = "";
-                        break;
-                    }
-                }
+    document.getElementById("searchInput").addEventListener("keyup", function() {
+        var filter = this.value.toUpperCase();
+        var rows = document.querySelectorAll("#ledgerTable tbody tr");
+        
+        rows.forEach(function(row) {
+            var text = row.textContent || row.innerText;
+            if (text.toUpperCase().indexOf(filter) > -1) {
+                row.style.display = "";
+            } else {
+                row.style.display = "none";
             }
-        }
-    }
-    document.getElementById("searchInput").addEventListener("keyup", filterTable);
+        });
+    });
     </script>
 </body>
 </html>
@@ -139,7 +133,6 @@ def dashboard():
     total_transactions = len(data)
     latest_date = data[-1]['date'] if data else ""
     
-    # ഏറ്റവും പുതിയ എൻട്രികൾ ടേബിളിൽ ആദ്യം കാണിക്കാൻ വേണ്ടി റിവേഴ്സ് ചെയ്യുന്നു
     return render_template_string(
         HTML_TEMPLATE, 
         inventory_data=reversed(data), 
@@ -152,7 +145,6 @@ def add_entry():
     if request.method == 'POST':
         data = load_inventory()
         
-        # അടുത്ത Sl No കണ്ടുപിടിക്കുന്നു
         try:
             next_sl = max([int(e['sl_no']) for e in data if e['sl_no'].isdigit()]) + 1 if data else 1
         except ValueError:
@@ -169,4 +161,3 @@ def add_entry():
 
 if __name__ == '__main__':
     app.run(debug=True)
-
