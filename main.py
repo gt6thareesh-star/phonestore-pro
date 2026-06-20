@@ -1,16 +1,34 @@
 import os
+import csv
 from flask import Flask, render_template_string, request, redirect, url_for
 
 app = Flask(__name__)
+CSV_FILE = 'inventory.csv'
 
-# താൽക്കാലികമായി ഡാറ്റ സൂക്ഷിക്കാൻ (Sample Product Data)
-products = [
-    {"id": 1, "name": "Bleu de Chanel", "category": "Perfume", "stock": 15, "price": 120},
-    {"id": 2, "name": "Sauvage Dior", "category": "Perfume", "stock": 8, "price": 115},
-    {"id": 3, "name": "Creed Aventus", "category": "Luxury Perfume", "stock": 5, "price": 250},
-    {"id": 4, "name": "Acqua Di Gio", "category": "Perfume", "stock": 22, "price": 95},
-    {"id": 5, "name": "Tom Ford Oud Wood", "category": "Luxury Perfume", "stock": 3, "price": 180}
-]
+def load_inventory():
+    if not os.path.exists(CSV_FILE):
+        return []
+    
+    entries = []
+    with open(CSV_FILE, mode='r', newline='', encoding='utf-8') as f:
+        reader = csv.DictReader(f)
+        for row in reader:
+            entries.append({
+                "sl_no": row.get("Sl No", ""),
+                "date": row.get("Date", ""),
+                "item": row.get("Item Description", ""),
+                "qty": row.get("Quantity", ""),
+                "issued_to": row.get("Issued To", "")
+            })
+    return entries
+
+def save_entry(sl_no, date, item, qty, issued_to):
+    file_exists = os.path.exists(CSV_FILE)
+    with open(CSV_FILE, mode='a', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        if not file_exists:
+            writer.writerow(["Sl No", "Date", "Item Description", "Quantity", "Issued To"])
+        writer.writerow([sl_no, date, item, qty, issued_to])
 
 HTML_TEMPLATE = """
 <!DOCTYPE html>
@@ -18,76 +36,68 @@ HTML_TEMPLATE = """
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fragorium Inventory Dashboard</title>
+    <title>Fragorium Stock Issue Ledger</title>
     <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body class="bg-gray-100 font-sans antialiased">
+<body class="bg-gray-50 font-sans antialiased">
 
     <div class="max-w-6xl mx-auto p-4 md:p-8">
-        <div class="flex items-center space-x-3 mb-8">
-            <span class="text-3xl">📊</span>
-            <h1 class="text-2xl md:text-3xl font-bold text-gray-800">Fragorium Inventory Dashboard</h1>
+        <div class="flex items-center space-x-3 mb-8 bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+            <span class="text-4xl">📦</span>
+            <div>
+                <h1 class="text-2xl font-bold text-gray-800">Fragorium Stock Issue Ledger</h1>
+                <p class="text-sm text-gray-500">Real-time Factory Inventory Tracking</p>
+            </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-6 mb-8">
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                <p class="text-sm font-medium text-gray-500 uppercase">Total Items In Stock</p>
-                <p class="text-3xl font-bold text-blue-600 mt-2">{{ total_items }}</p>
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-blue-500">
+                <p class="text-sm font-medium text-gray-500 uppercase">Total Transactions</p>
+                <p class="text-3xl font-bold text-gray-800 mt-1">{{ total_transactions }}</p>
             </div>
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                <p class="text-sm font-medium text-gray-500 uppercase">Unique Products</p>
-                <p class="text-3xl font-bold text-indigo-600 mt-2">{{ unique_products }}</p>
-            </div>
-            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200">
-                <p class="text-sm font-medium text-gray-500 uppercase">Low Stock Alerts</p>
-                <p class="text-3xl font-bold text-red-600 mt-2">{{ low_stock_count }}</p>
+            <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 border-l-4 border-emerald-500">
+                <p class="text-sm font-medium text-gray-500 uppercase">Latest Update</p>
+                <p class="text-xl font-bold text-gray-800 mt-2">{% if latest_date %}{{ latest_date }}{% else %}N/A{% endif %}</p>
             </div>
         </div>
 
         <div class="bg-white p-6 rounded-xl shadow-sm border border-gray-200 mb-8">
-            <h2 class="text-lg font-bold text-gray-800 mb-4">➕ Add New Product</h2>
+            <h2 class="text-base font-bold text-gray-800 mb-4 flex items-center">
+                <span class="mr-2">📝</span> Log New Stock Issue
+            </h2>
             <form action="/add" method="POST" class="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <input type="text" name="name" placeholder="Product Name" required class="border p-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <input type="text" name="category" placeholder="Category (e.g. Perfume)" required class="border p-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <input type="number" name="price" placeholder="Price ($)" required class="border p-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <input type="number" name="stock" placeholder="Initial Stock" required class="border p-2 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
-                <button type="submit" class="md:col-span-4 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2 rounded-lg transition text-sm">Add Product to Inventory</button>
+                <input type="text" name="date" placeholder="Date (DD/MM/YYYY)" required class="border p-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <input type="text" name="item" placeholder="Item Description" required class="border p-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 md:col-span-1">
+                <input type="text" name="qty" placeholder="Quantity (e.g. 1 Box)" required class="border p-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <input type="text" name="issued_to" placeholder="Issued To (Name/Dept)" required class="border p-2.5 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500">
+                <button type="submit" class="md:col-span-4 bg-blue-600 hover:bg-blue-700 text-white font-medium py-2.5 rounded-lg transition text-sm shadow-sm">Save Transaction</button>
             </form>
+        </div>
+
+        <div class="mb-4">
+            <input type="text" id="searchInput" onkeyup="filterTable()" placeholder="🔍 Type to search item description or staff name..." class="w-full border p-3 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white shadow-sm">
         </div>
 
         <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
             <div class="overflow-x-auto">
-                <table class="w-full text-left border-collapse">
+                <table class="w-full text-left border-collapse" id="ledgerTable">
                     <thead>
-                        <tr class="bg-gray-800 text-white text-sm">
-                            <th class="p-4 font-semibold">ID</th>
-                            <th class="p-4 font-semibold">Product Name</th>
-                            <th class="p-4 font-semibold">Category</th>
-                            <th class="p-4 font-semibold">Price</th>
-                            <th class="p-4 font-semibold">Stock Qty</th>
-                            <th class="p-4 font-semibold">Status</th>
-                            <th class="p-4 font-semibold text-center">Actions</th>
+                        <tr class="bg-gray-800 text-white text-xs uppercase tracking-wider">
+                            <th class="p-4 font-semibold w-20">Sl No</th>
+                            <th class="p-4 font-semibold w-32">Date</th>
+                            <th class="p-4 font-semibold">Item Description</th>
+                            <th class="p-4 font-semibold w-32">Quantity</th>
+                            <th class="p-4 font-semibold w-48">Issued To</th>
                         </tr>
                     </thead>
                     <tbody class="divide-y divide-gray-200 text-sm text-gray-700">
-                        {% for prod in products %}
-                        <tr class="hover:bg-gray-50">
-                            <td class="p-4 font-mono text-gray-500">#{{ prod.id }}</td>
-                            <td class="p-4 font-bold text-gray-900">{{ prod.name }}</td>
-                            <td class="p-4"><span class="bg-gray-100 px-2 py-1 rounded text-xs">{{ prod.category }}</span></td>
-                            <td class="p-4 font-medium">${{ prod.price }}</td>
-                            <td class="p-4 font-bold">{{ prod.stock }}</td>
-                            <td class="p-4">
-                                {% if prod.stock <= 5 %}
-                                <span class="bg-red-100 text-red-800 px-2.5 py-0.5 rounded-full text-xs font-semibold">Low Stock</span>
-                                {% else %}
-                                <span class="bg-green-100 text-green-800 px-2.5 py-0.5 rounded-full text-xs font-semibold">In Stock</span>
-                                {% endif %}
-                            </td>
-                            <td class="p-4 text-center space-x-2">
-                                <a href="/stock_in/{{ prod.id }}" class="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded font-bold text-xs transition">+ Stock In</a>
-                                <a href="/stock_out/{{ prod.id }}" class="bg-red-500 hover:bg-red-600 text-white px-3 py-1 rounded font-bold text-xs transition">- Stock Out</a>
-                            </td>
+                        {% for entry in inventory_data %}
+                        <tr class="hover:bg-gray-50 transition-colors">
+                            <td class="p-4 font-mono text-gray-400">#{{ entry.sl_no }}</td>
+                            <td class="p-4 text-gray-600 font-medium">{{ entry.date }}</td>
+                            <td class="p-4 font-bold text-gray-900">{{ entry.item }}</td>
+                            <td class="p-4"><span class="bg-blue-50 text-blue-700 px-2 py-1 rounded text-xs font-semibold">{{ entry.qty }}</span></td>
+                            <td class="p-4 text-gray-600 font-medium">{{ entry.issued_to }}</td>
                         </tr>
                         {% endfor %}
                     </tbody>
@@ -96,52 +106,65 @@ HTML_TEMPLATE = """
         </div>
     </div>
 
+    <script>
+    def filterTable() {
+        var input = document.getElementById("searchInput");
+        var filter = input.value.toUpperCase();
+        var table = document.getElementById("ledgerTable");
+        var tr = table.getElementsByTagName("tr");
+
+        for (var i = 1; i < tr.length; i++) {
+            tr[i].style.display = "none";
+            var td = tr[i].getElementsByTagName("td");
+            for (var j = 0; j < td.length; j++) {
+                if (td[j]) {
+                    var txtValue = td[j].textContent || td[j].innerText;
+                    if (txtValue.toUpperCase().indexOf(filter) > -1) {
+                        tr[i].style.display = "";
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    document.getElementById("searchInput").addEventListener("keyup", filterTable);
+    </script>
 </body>
 </html>
 """
 
 @app.route('/')
 def dashboard():
-    total_items = sum(p['stock'] for p in products)
-    unique_products = len(products)
-    low_stock_count = sum(1 for p in products if p['stock'] <= 5)
+    data = load_inventory()
+    total_transactions = len(data)
+    latest_date = data[-1]['date'] if data else ""
     
+    # ഏറ്റവും പുതിയ എൻട്രികൾ ടേബിളിൽ ആദ്യം കാണിക്കാൻ വേണ്ടി റിവേഴ്സ് ചെയ്യുന്നു
     return render_template_string(
         HTML_TEMPLATE, 
-        products=products, 
-        total_items=total_items, 
-        unique_products=unique_products, 
-        low_stock_count=low_stock_count
+        inventory_data=reversed(data), 
+        total_transactions=total_transactions,
+        latest_date=latest_date
     )
 
 @app.route('/add', methods=['POST'])
-def add_product():
+def add_entry():
     if request.method == 'POST':
-        new_id = max([p['id'] for p in products]) + 1 if products else 1
-        new_prod = {
-            "id": new_id,
-            "name": request.form['name'],
-            "category": request.form['category'],
-            "price": int(request.form['price']),
-            "stock": int(request.form['stock'])
-        }
-        products.append(new_prod)
-    return redirect(url_for('dashboard'))
-
-@app.route('/stock_in/<int:product_id>')
-def stock_in(product_id):
-    for p in products:
-        if p['id'] == product_id:
-            p['stock'] += 1
-            break
-    return redirect(url_for('dashboard'))
-
-@app.route('/stock_out/<int:product_id>')
-def stock_out(product_id):
-    for p in products:
-        if p['id'] == product_id and p['stock'] > 0:
-            p['stock'] -= 1
-            break
+        data = load_inventory()
+        
+        # അടുത്ത Sl No കണ്ടുപിടിക്കുന്നു
+        try:
+            next_sl = max([int(e['sl_no']) for e in data if e['sl_no'].isdigit()]) + 1 if data else 1
+        except ValueError:
+            next_sl = len(data) + 1
+            
+        date = request.form['date']
+        item = request.form['item']
+        qty = request.form['qty']
+        issued_to = request.form['issued_to']
+        
+        save_entry(next_sl, date, item, qty, issued_to)
+        
     return redirect(url_for('dashboard'))
 
 if __name__ == '__main__':
