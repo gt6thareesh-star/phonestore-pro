@@ -1,5 +1,7 @@
 import os
-from flask import Flask, render_template_string, request, redirect, url_counts
+from flask import Flask, render_template_string, request, redirect from flask import Flask, render_template_string, request, redirect
+
+url_counts = {}
 
 app = Flask(__name__)
 
